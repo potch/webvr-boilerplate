@@ -19,10 +19,20 @@ body {
   padding: 0;
   overflow: hidden;
 }
+#video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 21vw;
+  height: 3vw;
+  z-index: 1;
+}
+
 </style>
 </head>
 
 <body>
+    <video id="video" src="test1.mp4" crossorigin="anonymous" height="4096" width="571"></video>
 
 </body>
 
@@ -36,7 +46,7 @@ WebVRConfig = {
    */
 
   // Forces availability of VR mode.
-  //FORCE_ENABLE_VR: true, // Default: false.
+  FORCE_ENABLE_VR: true, // Default: false.
   // Complementary filter coefficient. 0 for accelerometer, 1 for gyro.
   //K_FILTER: 0.98, // Default: 0.98.
   // How far into the future to predict during fast motion.
@@ -95,19 +105,15 @@ WebVRConfig = {
 
 
 <script>
-// Setup three.js WebGL renderer. Note: Antialiasing is a big performance hit.
-// Only enable it if you actually need to.
-var renderer = new THREE.WebGLRenderer({antialias: true});
-renderer.setPixelRatio(window.devicePixelRatio);
 
-// Append the canvas element created by the renderer to document body element.
-document.body.appendChild(renderer.domElement);
-
-// Create a three.js scene.
 var scene = new THREE.Scene();
+var camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
 
-// Create a three.js camera.
-var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+var renderer = new THREE.WebGLRenderer();
+self.renderer.setClearColor( 0x000000 );
+renderer.setSize( window.innerWidth, window.innerHeight );
+document.body.appendChild( renderer.domElement );
+
 
 // Apply VR headset positional data to camera.
 var controls = new THREE.VRControls(camera);
@@ -116,29 +122,6 @@ var controls = new THREE.VRControls(camera);
 var effect = new THREE.VREffect(renderer);
 effect.setSize(window.innerWidth, window.innerHeight);
 
-
-// Add a repeating grid as a skybox.
-var boxWidth = 5;
-var loader = new THREE.TextureLoader();
-loader.load('img/box.png', onTextureLoaded);
-
-function onTextureLoaded(texture) {
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(boxWidth, boxWidth);
-
-  var geometry = new THREE.BoxGeometry(boxWidth, boxWidth, boxWidth);
-  var material = new THREE.MeshBasicMaterial({
-    map: texture,
-    color: 0x01BE00,
-    side: THREE.BackSide
-  });
-
-  var skybox = new THREE.Mesh(geometry, material);
-  scene.add(skybox);
-}
-
-
 // Create a VR manager helper to enter and exit VR mode.
 var params = {
   hideButton: false, // Default: false.
@@ -146,38 +129,100 @@ var params = {
 };
 var manager = new WebVRManager(renderer, effect, params);
 
-// Create 3D objects.
-var geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-var material = new THREE.MeshNormalMaterial();
-var cube = new THREE.Mesh(geometry, material);
+camera.lookAt({x:0,y:0,z:0});
 
-// Position cube mesh
-cube.position.z = -1;
+var video = document.querySelector('#video');
+console.log(video);
+video.play();
 
+videoTexture = new THREE.Texture( video );
+videoTexture.minFilter = THREE.LinearFilter;
+videoTexture.magFilter = THREE.LinearFilter;
+videoTexture.flipY = true;
 
-// Add cube mesh to your three.js scene
-scene.add(cube);
+var movieMaterial = new THREE.MeshBasicMaterial( { map: videoTexture, overdraw: true, side:THREE.DoubleSide } );
 
-// Request animation frame loop function
-var lastRender = 0;
-function animate(timestamp) {
-  var delta = Math.min(timestamp - lastRender, 500);
-  lastRender = timestamp;
+var theater = new THREE.Object3D();
 
-  // Apply rotation to cube mesh
-  cube.rotation.y += delta * 0.0006;
+var geometry = new THREE.PlaneGeometry( 2.39, 1, 1 );
+var center = new THREE.Mesh( geometry, movieMaterial );
+center.position.z = -2;
+theater.add(center);
+centerUV = geometry.faceVertexUvs[0];
+for (var i=0; i<centerUV.length; i++) {
+  var uvs = centerUV[i];
+  for (var j = 0; j < uvs.length; j++) {
+    uvs[j].x = uvs[j].x / 3 + (1/3);
+  }
+}
 
-  // Update VR headset position and apply to camera.
+var geometry = new THREE.PlaneGeometry( 2.39, 1, 1 );
+var left = new THREE.Mesh( geometry, movieMaterial );
+left.rotation.y = 70 * Math.PI / 180;
+left.position.z = -.85;
+left.position.x = -1.65;
+theater.add(left);
+leftUV = geometry.faceVertexUvs[0];
+for (var i=0; i<leftUV.length; i++) {
+  var uvs = leftUV[i];
+  for (var j = 0; j < uvs.length; j++) {
+    uvs[j].x = uvs[j].x / 3;
+  }
+}
+
+var geometry = new THREE.PlaneGeometry( 2.39, 1, 1 );
+var right = new THREE.Mesh( geometry, movieMaterial );
+right.rotation.y = -70 * Math.PI / 180;
+right.position.z = -.85;
+right.position.x = 1.65;
+theater.add(right);
+rightUV = geometry.faceVertexUvs[0];
+for (var i=0; i<rightUV.length; i++) {
+  var uvs = rightUV[i];
+  for (var j = 0; j < uvs.length; j++) {
+    uvs[j].x = uvs[j].x / 3 + (2/3);
+  }
+}
+
+scene.add(theater);
+
+var rx = 0, ry=0;
+var sx = 0, sy = 0;
+var srx, sry;
+var dragging = false;
+window.addEventListener('mousedown', function (e) {
+  sx = e.pageX;
+  sy = e.pageY;
+  srx = rx;
+  sry = ry;
+  dragging = true;
+});
+window.addEventListener('mousemove', function (e) {
+  if (dragging) {
+    rx = srx + (sx - e.pageX) / 100;
+    ry = sry + (sy - e.pageY) / 100;
+    console.log(rx, ry);
+  }
+});
+window.addEventListener('mouseup', stopDrag);
+window.addEventListener('mouseleave', stopDrag);
+function stopDrag() {
+  dragging = false;
+}
+function frame() {
+  if ( video.readyState === video.HAVE_ENOUGH_DATA ) {
+    if ( videoTexture ) {
+      videoTexture.needsUpdate = true;
+    }
+  }
   controls.update();
 
   // Render the scene through the manager.
-  manager.render(scene, camera, timestamp);
-
-  requestAnimationFrame(animate);
+  manager.render(scene, camera);
+  requestAnimationFrame(frame);
 }
+frame();
 
-// Kick off animation loop
-animate(performance ? performance.now() : Date.now());
 
 // Reset the position sensor when 'z' pressed.
 function onKey(event) {
